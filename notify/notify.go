@@ -51,6 +51,7 @@ var (
 
 func init() {
 	numNotifications.WithLabelValues("email")
+	numNotifications.WithLabelValues("flowdock")
 	numNotifications.WithLabelValues("hipchat")
 	numNotifications.WithLabelValues("pagerduty")
 	numNotifications.WithLabelValues("pushover")
@@ -59,6 +60,7 @@ func init() {
 	numNotifications.WithLabelValues("webhook")
 	numNotifications.WithLabelValues("victorops")
 	numFailedNotifications.WithLabelValues("email")
+	numFailedNotifications.WithLabelValues("flowdock")
 	numFailedNotifications.WithLabelValues("hipchat")
 	numFailedNotifications.WithLabelValues("pagerduty")
 	numFailedNotifications.WithLabelValues("pushover")

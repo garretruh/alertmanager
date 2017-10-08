@@ -117,6 +117,20 @@ var (
 		Retry:    duration(1 * time.Minute),
 		Expire:   duration(1 * time.Hour),
 	}
+
+	// DefaultFlowdockConfig defines default values for Flowdock configurations.
+	DefaultFlowdockConfig = FlowdockConfig{
+		NotifierConfig: NotifierConfig{
+			VSendResolved: false,
+		},
+		Color:        `{{ if eq .Status "firing" }}red{{ else }}green{{ end }}`,
+		Status:       `{{ if eq .Status "firing" }}Firing{{ else }}Resolved {{ end }}`,
+		Username:     `{{ template "flowdock.default.username" . }}`,
+		MessageTitle: `{{ template "flowdock.default.messagetitle" . }}`,
+		ThreadTitle:  `{{ template "flowdock.default.threadtitle" . }}`,
+		IconURL:      `{{ template "flowdock.default.iconurl" . }}`,
+		Body:         `{{ template "flowdock.default.body" . }}`,
+	}
 )
 
 // NotifierConfig contains base options common across all notifier configurations.
@@ -394,4 +408,32 @@ func (c *PushoverConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 		return fmt.Errorf("missing token in Pushover config")
 	}
 	return checkOverflow(c.XXX, "pushover config")
+}
+
+// FlowdockConfig configures notifications via Flowdock.
+type FlowdockConfig struct {
+	NotifierConfig `yaml:",inline" json:",inline"`
+
+	// Flowdock channel override, (like #other-channel or @username).
+	FlowToken    string `yaml:"flow_token,omitempty" json:"flow_token,omitempty"`
+	Username     string `yaml:"username,omitempty" json:"username,omitempty"`
+	Color        string `yaml:"color,omitempty" json:"color,omitempty"`
+	Status       string `yaml:"status,omitempty" json:"status,omitempty"`
+	MessageTitle string `yaml:"message_title,omitempty" json:"message_title,omitempty"`
+	ThreadTitle  string `yaml:"thread_title,omitempty" json:"thread_title,omitempty"`
+	Body         string `yaml:"body,omitempty" json:"body,omitempty"`
+	IconURL      string `yaml:"icon_url,omitempty" json:"icon_url,omitempty"`
+
+	// Catches all undefined fields and must be empty after parsing.
+	XXX map[string]interface{} `yaml:",inline" json:"-"`
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (c *FlowdockConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	*c = DefaultFlowdockConfig
+	type plain FlowdockConfig
+	if err := unmarshal((*plain)(c)); err != nil {
+		return err
+	}
+	return checkOverflow(c.XXX, "flowdock config")
 }

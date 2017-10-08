@@ -59,6 +59,11 @@ Alerts Resolved:
 {{ define "victorops.default.entity_display_name" }}{{ template "__subject" . }}{{ end }}
 {{ define "victorops.default.monitoring_tool" }}{{ template "__alertmanager" . }}{{ end }}
 
+{{ define "flowdock.default.title" }}{{ template "__subject" . }}{{ end }}
+{{ define "flowdock.default.username" }}{{ template "__alertmanager" . }}{{ end }}
+{{ define "flowdock.default.iconurl" }}{{ end }}
+{{ define "flowdock.default.body" }}{{ end }}
+
 {{ define "email.default.subject" }}{{ template "__subject" . }}{{ end }}
 {{ define "email.default.html" }}
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">

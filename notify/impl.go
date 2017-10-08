@@ -132,6 +132,10 @@ func BuildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template) []I
 		n := NewPushover(c, tmpl)
 		add("pushover", i, n, c)
 	}
+	for i, c := range nc.FlowdockConfigs {
+		n := NewFlowdock(c, tmpl)
+		add("flowdock", i, n, c)
+	}
 	return integrations
 }
 
@@ -1001,6 +1005,141 @@ func (n *Pushover) Notify(ctx context.Context, as ...*types.Alert) (bool, error)
 			return false, err
 		}
 		return false, fmt.Errorf("unexpected status code %v (body: %s)", resp.StatusCode, string(body))
+	}
+
+	return false, nil
+}
+
+// Flowdock implements a Notifier for Flowdock notifications.
+type Flowdock struct {
+	conf *config.FlowdockConfig
+	tmpl *template.Template
+}
+
+// NewFlowdock returns a new Flowdock notification handler.
+func NewFlowdock(conf *config.FlowdockConfig, tmpl *template.Template) *Flowdock {
+	return &Flowdock{
+		conf: conf,
+		tmpl: tmpl,
+	}
+}
+
+// flowdockReq is the request for sending a Flowdock notification.
+type flowdockReq struct {
+	Event            string         `json:"event,omitempty"`
+	ExternalThreadId string         `json:"external_thread_id,omitempty"`
+	Title            string         `json:"title,omitempty"`
+	Tags             []string       `json:"tags"`
+	Author           flowdockAuthor `json:"author"`
+	Thread           flowdockThread `json:"thread"`
+}
+
+type flowdockAuthor struct {
+	Name   string `json:"name"`
+	Avatar string `json:"avatar"`
+}
+
+type flowdockThread struct {
+	Title   string                 `json:"title,omitempty"`
+	Body    string                 `json:"body,omitempty"`
+	Fields  []flowdockThreadField  `json:"fields"`
+	Status  flowdockThreadStatus   `json:"status"`
+	Actions []flowdockThreadAction `json:"actions"`
+}
+
+type flowdockThreadField struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
+}
+
+type flowdockThreadStatus struct {
+	Color string `json:"color"`
+	Value string `json:"value"`
+}
+
+type flowdockThreadAction struct {
+	Type        string `json:"@type"`
+	URL         string `json:"url"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+// Notify implements the Notifier interface.
+func (n *Flowdock) Notify(ctx context.Context, as ...*types.Alert) (bool, error) {
+	var err error
+	var (
+		data     = n.tmpl.Data(receiverName(ctx), groupLabels(ctx), as...)
+		tmplText = tmplText(n.tmpl, data, &err)
+		apiUrl   = fmt.Sprintf("https://api.flowdock.com/messages?flow_token=%s", n.conf.FlowToken)
+	)
+
+	key, ok := GroupKey(ctx)
+	if !ok {
+		return false, fmt.Errorf("group key missing")
+	}
+
+	threadStatus := &flowdockThreadStatus{
+		Color: tmplText(n.conf.Color),
+		Value: tmplText(n.conf.Status),
+	}
+	viewAction := &flowdockThreadAction{
+		Type:        "ViewAction",
+		URL:         fmt.Sprintf("%s/#/alerts?receiver=%s", data.ExternalURL, data.Receiver),
+		Name:        "Alert",
+		Description: "View alerts in Alert Manager",
+	}
+	threadFields := make([]flowdockThreadField, 0)
+	for index, name := range data.CommonLabels.Names() {
+		threadFields = append(threadFields, flowdockThreadField{
+			Label: name,
+			Value: data.CommonLabels.Values()[index],
+		})
+	}
+	thread := &flowdockThread{
+		Title:   tmplText(n.conf.ThreadTitle),
+		Body:    tmplText(n.conf.Body),
+		Status:  *threadStatus,
+		Actions: []flowdockThreadAction{*viewAction},
+		Fields:  threadFields,
+	}
+	author := &flowdockAuthor{
+		Name:   tmplText(n.conf.Username),
+		Avatar: tmplText(n.conf.IconURL),
+	}
+	tags := make([]string, 0)
+	for _, element := range data.CommonAnnotations {
+		tags = append(tags, element)
+	}
+	req := &flowdockReq{
+		Event:            "activity",
+		ExternalThreadId: hashKey(key),
+		Title:            tmplText(n.conf.MessageTitle),
+		Tags:             tags,
+		Author:           *author,
+		Thread:           *thread,
+	}
+	if err != nil {
+		return false, err
+	}
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(req); err != nil {
+		return false, err
+	}
+
+	resp, err := ctxhttp.Post(ctx, http.DefaultClient, apiUrl, contentTypeJSON, &buf)
+	if err != nil {
+		return true, err
+	}
+	resp.Body.Close()
+
+	return n.retry(resp.StatusCode)
+}
+
+func (n *Flowdock) retry(statusCode int) (bool, error) {
+	// Lacking documentation, assuming only 5xx response codes are recoverable
+	if statusCode/100 != 2 {
+		return (statusCode/100 == 5), fmt.Errorf("unexpected status code %v", statusCode)
 	}
 
 	return false, nil
